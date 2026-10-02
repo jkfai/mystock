@@ -2,7 +2,6 @@
   "name": "库存管理系统",
   "short_name": "库存管理",
   "description": "简单好用的手机库存管理工具",
-  "start_url": "/inventory-app/",
   "start_url": "/mystock/",
   "scope": "/mystock/",
   "orientation": "portrait",
