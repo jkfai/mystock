@@ -66,6 +66,17 @@ th{text-align:left;padding:12px 14px;font-size:12px;font-weight:600;color:var(--
 td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
 tbody tr:hover{background:#f8fafc}
 tbody tr:last-child td{border-bottom:none}
+/* 类别分组行 */
+tr.cat-group-row td{
+  background:#eef4f2;
+  font-weight:700;
+  font-size:12.5px;
+  color:var(--primary);
+  padding:8px 14px;
+  letter-spacing:.5px;
+  border-bottom:1px solid #d4e3de;
+}
+tr.cat-group-row:hover td{background:#eef4f2}
 .product-cell{display:flex;align-items:center;gap:12px}
 .product-img{width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f1f5f9;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:10px;cursor:pointer;transition:.15s}
 .product-img:hover{transform:scale(1.08);box-shadow:0 2px 8px rgba(0,0,0,.15)}
@@ -428,7 +439,6 @@ function buildCatOptions(currentCat){
   html += `<option value="__new__">➕ 新增类别…</option>`;
   sel.innerHTML = html;
   if(currentCat && !cats.includes(currentCat)){
-    // 如果当前的类别不在列表里（比如导入数据），临时插进去
     sel.innerHTML = `<option value="">— 未分类 —</option><option value="${esc(currentCat)}" selected>${esc(currentCat)}</option>` + cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('') + `<option value="__new__">➕ 新增类别…</option>`;
   }
 }
@@ -438,7 +448,6 @@ function onCatSelectChange(sel){
     const newCat = prompt('请输入新的类别名称：');
     if(newCat && newCat.trim()){
       const v = newCat.trim();
-      // 插入到下拉里并选中
       const opt = document.createElement('option');
       opt.value = v; opt.textContent = v; opt.selected = true;
       sel.insertBefore(opt, sel.querySelector('option[value="__new__"]'));
@@ -447,6 +456,16 @@ function onCatSelectChange(sel){
       sel.value = '';
     }
   }
+}
+
+/* ========== 按类别排序（让同类别相邻） ========== */
+function sortByCategory(arr){
+  return arr.slice().sort((a,b)=>{
+    const ca = a.cat || '~未分类';
+    const cb = b.cat || '~未分类';
+    if(ca !== cb) return ca.localeCompare(cb, 'zh-CN');
+    return (a.name||'').localeCompare(b.name||'', 'zh-CN');
+  });
 }
 
 /* ========== 页面切换 ========== */
@@ -549,7 +568,7 @@ function renderStock(el){
         </table>
       </div>
       <div id="stockEmpty" class="empty" style="display:none;">
-        <div class="big-hint">该类别下暂无商品</div>
+        <div class="big-hint">还没有任何商品</div>
       </div>
     </div>
   `;
@@ -561,9 +580,12 @@ function filterStock(){
   const wrap = document.getElementById('stockTableWrap');
   const emptyBox = document.getElementById('stockEmpty');
   
-  // 所有类别 或 选了具体类别，都显示表格
-  const filtered = !stockCatFilter ? items : items.filter(p => p.cat === stockCatFilter);
-  const tbody = document.getElementById('stockTableBody');
+  // 所有类别 或 具体类别都显示
+  let filtered = !stockCatFilter ? items.slice() : items.filter(p => p.cat === stockCatFilter);
+  // 按类别排序，让同类别商品自动聚在一起
+  filtered = sortByCategory(filtered);
+  
+  const tbody=document.getElementById('stockTableBody');
   
   if(filtered.length === 0){
     if(wrap) wrap.style.display = 'none';
@@ -577,7 +599,16 @@ function filterStock(){
   if(wrap) wrap.style.display = 'block';
   if(emptyBox) emptyBox.style.display = 'none';
   
-  tbody.innerHTML = filtered.map(p=>{
+  let html = '';
+  let lastCat = null;
+  filtered.forEach(p=>{
+    const catKey = p.cat || '未分类';
+    // 每遇到一个新类别，插入一行类别标题
+    if(catKey !== lastCat){
+      html += `<tr class="cat-group-row"><td colspan="5">📁 ${esc(catKey)}</td></tr>`;
+      lastCat = catKey;
+    }
+    
     const target=Number(p.target)||Number(p.min)*2||10;
     const suggest=Math.max(0,target-Number(p.qty));
     let suggestHtml='<span class="num" style="color:var(--success);font-size:15px">0</span>';
@@ -586,7 +617,8 @@ function filterStock(){
     const img = p.image
       ? `<img src="${p.image}" class="product-img" onclick="showImageViewerById('${p.id}')" title="点击放大">`
       : `<div class="product-img">无图</div>`;
-    return `
+    
+    html += `
       <tr>
         <td><div class="product-cell">${img}<div class="product-info"><div class="name">${esc(p.name)}</div></div></div></td>
         <td>${suggestHtml}</td>
@@ -599,7 +631,8 @@ function filterStock(){
           <button class="btn sm danger icon-btn" onclick="deleteItem('${p.id}')" title="删除">🗑️</button>
         </td>
       </tr>`;
-  }).join('');
+  });
+  tbody.innerHTML = html;
 }
 
 /* ========== 删除商品 ========== */
@@ -659,13 +692,22 @@ function filterRestock(){
   });
   lowItems = lowItems.filter(p => !hiddenRestockIds.has(p.id));
   if(restockCatFilter){ lowItems=lowItems.filter(p=>p.cat===restockCatFilter); }
+  lowItems = sortByCategory(lowItems);
   const tbody=document.getElementById('restockBody');
   if(!tbody) return;
   if(lowItems.length===0){
     tbody.innerHTML='<tr><td colspan="5"><div class="empty">暂无需要补货的商品</div></td></tr>';
     return;
   }
-  tbody.innerHTML=lowItems.map(p=>{
+  
+  let html='';
+  let lastCat=null;
+  lowItems.forEach(p=>{
+    const catKey = p.cat || '未分类';
+    if(catKey !== lastCat){
+      html += `<tr class="cat-group-row"><td colspan="5">📁 ${esc(catKey)}</td></tr>`;
+      lastCat = catKey;
+    }
     const target=Number(p.target)||Number(p.min)*2||10;
     const suggest=Math.max(0,target-Number(p.qty));
     let suggestHtml='<span class="num" style="color:var(--success);font-size:15px">0</span>';
@@ -674,7 +716,8 @@ function filterRestock(){
     const img = p.image
       ? `<img src="${p.image}" class="product-img" onclick="showImageViewerById('${p.id}')" title="点击放大">`
       : `<div class="product-img">无图</div>`;
-    return `
+    
+    html += `
       <tr>
         <td><div class="product-cell">${img}<div class="product-info"><div class="name">${esc(p.name)}</div></div></div></td>
         <td>${suggestHtml}</td>
@@ -685,7 +728,8 @@ function filterRestock(){
           <button class="btn sm outline icon-btn" onclick="hideRestockRow('${p.id}')" title="从清单隐藏（不影响数据）">🗑️</button>
         </td>
       </tr>`;
-  }).join('');
+  });
+  tbody.innerHTML = html;
 }
 
 /* ========== 库存流水 ========== */
