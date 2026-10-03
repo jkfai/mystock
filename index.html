@@ -67,7 +67,6 @@ th{text-align:left;padding:12px 14px;font-size:12px;font-weight:600;color:var(--
 td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
 tbody tr:hover{background:#f8fafc}
 tbody tr:last-child td{border-bottom:none}
-/* 类别分组行 */
 tr.cat-group-row td{
   background:#eef4f2;
   font-weight:700;
@@ -382,6 +381,7 @@ const KEY='inventory_app_v2';
 let items=[],records=[],editingId=null,stockItemId=null,stockType='in';
 let html5QrCode=null,currentImageBase64=null,cameraStream=null;
 let stockCatFilter='';
+let stockSearchQ='';
 let restockCatFilter='';
 let currentBarcodeId=null;
 let hiddenRestockIds = new Set();
@@ -539,6 +539,10 @@ function renderStock(el){
   el.innerHTML=`
     <div class="card">
       <div class="toolbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L17 17"/></svg>
+          <input id="searchInput" placeholder="搜索商品名称或条码" value="${esc(stockSearchQ)}" oninput="filterStock()">
+        </div>
         <select id="catFilter" onchange="filterStock()">
           <option value="">所有类别</option>
           ${cats.map(c=>`<option value="${esc(c)}" ${c===stockCatFilter?'selected':''}>${esc(c)}</option>`).join('')}
@@ -577,13 +581,19 @@ function renderStock(el){
 }
 
 function filterStock(){
+  stockSearchQ = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
   stockCatFilter = document.getElementById('catFilter')?.value || '';
   const wrap = document.getElementById('stockTableWrap');
   const emptyBox = document.getElementById('stockEmpty');
   
-  // 所有类别 或 具体类别都显示
   let filtered = !stockCatFilter ? items.slice() : items.filter(p => p.cat === stockCatFilter);
-  // 按类别排序，让同类别商品自动聚在一起
+  if(stockSearchQ){
+    filtered = filtered.filter(p=>
+      (p.name||'').toLowerCase().includes(stockSearchQ)
+      || (p.sku||'').toLowerCase().includes(stockSearchQ)
+      || (p.cat||'').toLowerCase().includes(stockSearchQ)
+    );
+  }
   filtered = sortByCategory(filtered);
   
   const tbody=document.getElementById('stockTableBody');
@@ -592,7 +602,7 @@ function filterStock(){
     if(wrap) wrap.style.display = 'none';
     if(emptyBox){
       emptyBox.style.display = 'block';
-      emptyBox.innerHTML = '<div class="big-hint">该类别下暂无商品</div>';
+      emptyBox.innerHTML = '<div class="big-hint">'+(stockSearchQ?'没有找到匹配的商品':'还没有任何商品')+'</div>';
     }
     return;
   }
@@ -604,7 +614,6 @@ function filterStock(){
   let lastCat = null;
   filtered.forEach(p=>{
     const catKey = p.cat || '未分类';
-    // 每遇到一个新类别，插入一行类别标题
     if(catKey !== lastCat){
       html += `<tr class="cat-group-row"><td colspan="5">📁 ${esc(catKey)}</td></tr>`;
       lastCat = catKey;
